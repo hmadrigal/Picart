@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using SixLabors.ImageSharp.Processing;
 
 internal class Program
 {
@@ -7,13 +8,21 @@ internal class Program
     {
         var inputOption = new Option<FileInfo?>("--input", "Input image file. Default to standard input.");
         var outputOption = new Option<FileInfo?>("--output", getDefaultValue: () => default, description: "Output image file. Default to standard output.");
+        var scaleOption = new Option<double>("--scale", getDefaultValue: () => 1.0, description: "Percentage relating image size to terminal dimensions.");
         var rootCommand = new RootCommand(description: "Convers a image to ASCII.")
-        { inputOption, outputOption };
+        { inputOption, outputOption, scaleOption };
 
-        rootCommand.SetHandler((FileInfo? input, FileInfo? output) =>
+        rootCommand.SetHandler((FileInfo? input, FileInfo? output, double scale) =>
         {
             var inputStream = input?.OpenRead() ?? Console.OpenStandardInput();
             using var image = Image.Load<Rgba32>(inputStream);
+            double target = GetTargetScale(scale, image);
+
+            // Resize the given image in place and return it for chaining.
+            // 'x' signifies the current image processing context.
+            //image.Mutate(x => x.Resize(image.Width / 2, image.Height / 2));
+            image.Mutate(i => i.Resize(Convert.ToInt32(image.Width * target), Convert.ToInt32(image.Height * target)));
+
             image.ProcessPixelRows(accessor =>
             {
 
@@ -23,7 +32,7 @@ internal class Program
                     Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
 
                     // pixelRow.Length has the same value as accessor.Width,
-                    // but using pixelRow.Length allows the JIT to optimize away bounds checks:
+                    // but using pixelRow.Length allows the JIT to opt  imize away bounds checks:
                     for (int x = 0; x < pixelRow.Length; x++)
                     {
                         // Get a reference to the pixel at position x
@@ -69,13 +78,21 @@ internal class Program
             });
         },
         inputOption,
-        outputOption
+        outputOption,
+        scaleOption
         );
 
         await rootCommand.InvokeAsync(args);
 
     }
 
+    private static double GetTargetScale(double scale, Image<Rgba32> image)
+    {
+        var high = Math.Max(Console.WindowWidth, image.Width);
+        var low = Math.Min(Console.WindowWidth, image.Width);
+        var target = ((high - low) * scale + low) / high;
+        return target;
+    }
 
     static char GetAsciiChar(int luminance)
     {
