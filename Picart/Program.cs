@@ -5,14 +5,15 @@ internal class Program
     
     private static async Task Main(string[] args)
     {
-        var inputOption = new Option<FileInfo>("--input", "Input image file.");
-        var outputOption = new Option<FileInfo?>("--output", getDefaultValue: () => default, description: "Output image file");
+        var inputOption = new Option<FileInfo?>("--input", "Input image file. Default to standard input.");
+        var outputOption = new Option<FileInfo?>("--output", getDefaultValue: () => default, description: "Output image file. Default to standard output.");
         var rootCommand = new RootCommand(description: "Convers a image to ASCII.")
         { inputOption, outputOption };
 
-        rootCommand.SetHandler((FileInfo input, FileInfo? output) =>
+        rootCommand.SetHandler((FileInfo? input, FileInfo? output) =>
         {
-            using var image = Image.Load<Rgba32>(input.OpenRead());
+            var inputStream = input?.OpenRead() ?? Console.OpenStandardInput();
+            using var image = Image.Load<Rgba32>(inputStream);
             image.ProcessPixelRows(accessor =>
             {
 
