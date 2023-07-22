@@ -88,8 +88,20 @@ internal class Program
 
     private static double GetTargetScale(double scale, Image<Rgba32> image)
     {
-        var high = Math.Max(Console.WindowWidth, image.Width);
-        var low = Math.Min(Console.WindowWidth, image.Width);
+        int tc;
+        int ti;
+        if (image.Height > image.Width)
+        {
+            tc = Console.WindowHeight;
+            ti = image.Height;
+        }
+        else
+        {
+            tc = Console.WindowWidth;
+            ti = image.Width;
+        }
+        var high = Math.Max(tc, ti );
+        var low = Math.Min(tc, ti   );
         var target = ((high - low) * scale + low) / high;
         return target;
     }
