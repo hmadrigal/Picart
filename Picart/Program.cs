@@ -1,5 +1,4 @@
 ﻿using System.CommandLine;
-using SixLabors.ImageSharp.Processing;
 
 internal class Program
 {
@@ -12,78 +11,80 @@ internal class Program
         var rootCommand = new RootCommand(description: "Convers a image to ASCII.")
         { inputOption, outputOption, scaleOption };
 
-        rootCommand.SetHandler((FileInfo? input, FileInfo? output, double scale) =>
+        rootCommand.SetHandler(RootCommandHandler,
+            inputOption,
+            outputOption,
+            scaleOption
+        );
+
+        await rootCommand.InvokeAsync(args);
+
+    }
+
+    private static void RootCommandHandler(FileInfo? input, FileInfo? output, double scale)
+    {
+        var inputStream = input?.OpenRead() ?? Console.OpenStandardInput();
+        using var image = Image.Load<Rgba32>(inputStream);
+        double target = GetTargetScale(scale, image);
+
+        // Resize the given image in place and return it for chaining.
+        // 'x' signifies the current image processing context.
+        //image.Mutate(x => x.Resize(image.Width / 2, image.Height / 2));
+        image.Mutate(i => i.Resize(Convert.ToInt32(image.Width * target), Convert.ToInt32(image.Height * target)));
+
+        image.ProcessPixelRows(accessor =>
         {
-            var inputStream = input?.OpenRead() ?? Console.OpenStandardInput();
-            using var image = Image.Load<Rgba32>(inputStream);
-            double target = GetTargetScale(scale, image);
 
-            // Resize the given image in place and return it for chaining.
-            // 'x' signifies the current image processing context.
-            //image.Mutate(x => x.Resize(image.Width / 2, image.Height / 2));
-            image.Mutate(i => i.Resize(Convert.ToInt32(image.Width * target), Convert.ToInt32(image.Height * target)));
-
-            image.ProcessPixelRows(accessor =>
+            // Convert the image to grayscale
+            for (int y = 0; y < accessor.Height; y++)
             {
+                Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
 
-                // Convert the image to grayscale
+                // pixelRow.Length has the same value as accessor.Width,
+                // but using pixelRow.Length allows the JIT to opt  imize away bounds checks:
+                for (int x = 0; x < pixelRow.Length; x++)
+                {
+                    // Get a reference to the pixel at position x
+                    ref Rgba32 pixel = ref pixelRow[x];
+
+
+                    byte luminance = (byte)(pixel.R * 0.3 + pixel.G * 0.59 + pixel.B * 0.11);
+                    pixel.R = luminance;
+                    pixel.G = luminance;
+                    pixel.B = luminance;
+                    pixel.A = 255;
+
+                }
+            }
+
+
+            // Create a text file to store the ASCII art
+            using var outputStream = output?.OpenWrite() ?? Console.OpenStandardOutput();
+            using StreamWriter writer = new StreamWriter(outputStream);
+            {
                 for (int y = 0; y < accessor.Height; y++)
                 {
                     Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
 
                     // pixelRow.Length has the same value as accessor.Width,
-                    // but using pixelRow.Length allows the JIT to opt  imize away bounds checks:
+                    // but using pixelRow.Length allows the JIT to optimize away bounds checks:
                     for (int x = 0; x < pixelRow.Length; x++)
                     {
                         // Get a reference to the pixel at position x
                         ref Rgba32 pixel = ref pixelRow[x];
 
-
-                        byte luminance = (byte)(pixel.R * 0.3 + pixel.G * 0.59 + pixel.B * 0.11);
-                        pixel.R = luminance;
-                        pixel.G = luminance;
-                        pixel.B = luminance;
-                        pixel.A = 255;
-
+                        byte luminance = pixel.R;
+                        char asciiChar = GetAsciiChar(luminance);
+                        writer.Write(asciiChar);
                     }
+
+                    writer.WriteLine();
+
                 }
 
 
-                // Create a text file to store the ASCII art
-                using var outputStream = output?.OpenWrite() ?? Console.OpenStandardOutput();
-                using StreamWriter writer = new StreamWriter(outputStream);
-                {
-                    for (int y = 0; y < accessor.Height; y++)
-                    {
-                        Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
-
-                        // pixelRow.Length has the same value as accessor.Width,
-                        // but using pixelRow.Length allows the JIT to optimize away bounds checks:
-                        for (int x = 0; x < pixelRow.Length; x++)
-                        {
-                            // Get a reference to the pixel at position x
-                            ref Rgba32 pixel = ref pixelRow[x];
-
-                            byte luminance = pixel.R;
-                            char asciiChar = GetAsciiChar(luminance);
-                            writer.Write(asciiChar);
-                        }
-
-                        writer.WriteLine();
-
-                    }
-
-
-                }
-            });
-        },
-        inputOption,
-        outputOption,
-        scaleOption
-        );
-
-        await rootCommand.InvokeAsync(args);
-
+            }
+        });
     }
 
     private static double GetTargetScale(double scale, Image<Rgba32> image)
